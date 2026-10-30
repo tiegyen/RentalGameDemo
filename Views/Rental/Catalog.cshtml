@@ -1,5 +1,99 @@
-﻿@*
-    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
-*@
+﻿@model List<RentalGameDemo.Models.Game>
+
 @{
+    ViewData["Title"] = "Game Catalog";
 }
+
+<style>
+    .catalog-container {
+        padding: 30px 0;
+    }
+
+    .catalog-title {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+
+    .game-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 22px;
+    }
+
+    .game-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 22px;
+        background: white;
+    }
+
+        .game-card h4 {
+            margin-bottom: 10px;
+        }
+
+    .game-genre {
+        color: #2563eb;
+        font-size: 14px;
+        margin-bottom: 12px;
+    }
+
+    .game-button {
+        display: block;
+        text-align: center;
+        padding: 10px;
+        margin-top: 18px;
+        border-radius: 7px;
+        background: #2563eb;
+        color: white;
+        text-decoration: none;
+    }
+
+        .game-button:hover {
+            background: #1d4ed8;
+            color: white;
+        }
+</style>
+
+<div class="catalog-container">
+    <div class="catalog-title">
+        <h2>Game Catalog</h2>
+        <p>Choose your favorite game to start renting.</p>
+    </div>
+
+    @if (Model.Count == 0)
+    {
+        <p class="text-center">No games are currently available.</p>
+    }
+    else
+    {
+        <div class="game-grid">
+            @foreach (var game in Model)
+            {
+                bool available = game.SteamAccounts
+                .Any(a => a.IsAvailable);
+
+                <div class="game-card">
+                    <h4>@game.Title</h4>
+
+                    <p class="game-genre">@game.Genre</p>
+
+                    <p>@game.Description</p>
+
+                    <p>
+                        Availability:
+                        <strong>
+                            @(available ? "Available" : "Unavailable")
+                        </strong>
+                    </p>
+
+                    <a class="game-button"
+                       asp-controller="Rental"
+                       asp-action="SelectGame"
+                       asp-route-gameId="@game.GameId">
+                        Rent Game
+                    </a>
+                </div>
+            }
+        </div>
+    }
+</div>

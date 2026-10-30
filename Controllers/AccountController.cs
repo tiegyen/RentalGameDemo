@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using RentalGameDemo.Data;
 using RentalGameDemo.Models;
+using RentalGameDemo.Services;
 
 namespace RentalGameDemo.Controllers
 {
@@ -11,14 +12,16 @@ namespace RentalGameDemo.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly PasswordHasher<Customer> _passwordHasher;
+        private readonly AccountOperations _accountOperations;
 
         // UML Attribute
         public string currentSessionToken { get; private set; }
             = string.Empty;
 
-        public AccountController(ApplicationDbContext context)
+        public AccountController(ApplicationDbContext context, AccountOperations accountOperations)
         {
             _context = context;
+            _accountOperations = accountOperations;
             _passwordHasher = new PasswordHasher<Customer>();
         }
 
@@ -70,23 +73,49 @@ namespace RentalGameDemo.Controllers
                 currentSessionToken
             );
 
+            HttpContext.Session.SetInt32("CustomerId", customer.CustomerId);
+            HttpContext.Session.SetString("Username", customer.Username);
+
             return true;
+        }
+
+        [HttpPost]
+        public IActionResult Login(string username, string password)
+        {
+            bool isAuthenticated = authenticateCustomer(username, password);
+
+            if (!isAuthenticated)
+            {
+                return Unauthorized(new
+                {
+                    success = false,
+                    message = "Invalid username or password."
+                });
+            }
+
+            return RedirectToAction("ActiveRentals", "Rental");
+        }
+
+        [HttpGet]
+        public IActionResult Login()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        public IActionResult Logout()
+        {
+            HttpContext.Session.Clear();
+
+            return RedirectToAction("Catalog", "Rental");
         }
 
         // UML Operation
         [NonAction]
         public SteamAccount? checkAvailability(int gameId)
         {
-            SteamAccount? availableAccount = _context.SteamAccounts
-                .FirstOrDefault(account =>
-                    account.GameId == gameId
-                    && account.IsAvailable
-                );
-
-            return availableAccount;
+            return _accountOperations.checkAvailability(gameId);
         }
-
-
 
 
     }
