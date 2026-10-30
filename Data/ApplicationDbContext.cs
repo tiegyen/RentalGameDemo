@@ -1,6 +1,6 @@
 ﻿namespace RentalGameDemo.Data
 {
-    public class RentalDbContext
+    public class ApplicationDbContext
     {
     }
 }
