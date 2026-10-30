@@ -1,0 +1,45 @@
+﻿@model RentalGameDemo.Models.Game
+
+@{
+    ViewData["Title"] = "Select Rental Duration";
+}
+
+<div class="container py-4">
+    <div class="card shadow-sm mx-auto" style="max-width: 600px;">
+        <div class="card-body p-4">
+            <h2 class="mb-2">Select Rental Duration</h2>
+
+            <h5 class="text-primary">@Model.Title</h5>
+
+            <p class="text-muted">@Model.Description</p>
+
+            <form asp-controller="Rental"
+                  asp-action="PrepareRental"
+                  method="post">
+
+                <input type="hidden"
+                       name="gameId"
+                       value="@Model.GameId" />
+
+                <div class="mb-3">
+                    <label for="duration" class="form-label">
+                        Rental Duration
+                    </label>
+
+                    <select name="duration"
+                            id="duration"
+                            class="form-select"
+                            required>
+                        <option value="1">1 Hour</option>
+                        <option value="24">24 Hours</option>
+                        <option value="48">48 Hours</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100">
+                    Continue to Checkout
+                </button>
+            </form>
+        </div>
+    </div>
+</div>

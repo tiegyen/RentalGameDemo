@@ -82,15 +82,17 @@ namespace RentalGameDemo.Controllers
         [HttpPost]
         public IActionResult Login(string username, string password)
         {
-            bool isAuthenticated = authenticateCustomer(username, password);
-
-            if (!isAuthenticated)
+            if (!authenticateCustomer(username, password))
             {
-                return Unauthorized(new
-                {
-                    success = false,
-                    message = "Invalid username or password."
-                });
+                ViewBag.ErrorMessage = "Invalid username or password.";
+                return View();
+            }
+
+            int? selectedGameId = HttpContext.Session.GetInt32("SelectedGameId");
+
+            if (selectedGameId != null)
+            {
+                return RedirectToAction("SelectDuration", "Rental");
             }
 
             return RedirectToAction("ActiveRentals", "Rental");

@@ -42,24 +42,39 @@ namespace RentalGameDemo.Controllers
 
             HttpContext.Session.SetInt32("SelectedGameId", gameId);
 
-            return RedirectToAction("Login", "Account");
+            int? customerId = HttpContext.Session.GetInt32("CustomerId");
+
+            if (customerId == null)
+            {
+                return RedirectToAction("Login", "Account");
+            }
+
+            return RedirectToAction("SelectDuration", "Rental");
         }
 
         [NonAction]
         public RentalOrder? processRental()
         {
             int? customerId = HttpContext.Session.GetInt32("CustomerId");
+            int? gameId = HttpContext.Session.GetInt32("SelectedGameId");
+            int? duration = HttpContext.Session.GetInt32("SelectedDuration");
 
-            if (customerId == null ||
-                selectedGameId <= 0 ||
-                selectedDuration <= 0)
+            if (customerId == null || gameId == null ||
+                duration == null || duration <= 0)
+            {
                 return null;
+            }
+
+            selectedGameId = gameId.Value;
+            selectedDuration = duration.Value;
 
             Game? selectedGame = _context.Games
                 .FirstOrDefault(g => g.GameId == selectedGameId);
 
             if (selectedGame == null)
+            {
                 return null;
+            }
 
             string gameDetails = selectedGame.getGameDetails();
 
@@ -67,22 +82,30 @@ namespace RentalGameDemo.Controllers
                 _accountOperations.checkAvailability(selectedGameId);
 
             if (availableAccount == null)
+            {
                 return null;
+            }
 
             bool reservationResult = availableAccount.reserveAccount();
 
             if (!reservationResult)
+            {
                 return null;
+            }
 
             _context.SaveChanges();
 
             DateTime startTime = DateTime.Now;
             DateTime endTime = startTime.AddHours(selectedDuration);
 
-            HttpContext.Session.SetInt32("PendingGameId", selectedGameId);
+            HttpContext.Session.SetInt32(
+                "PendingGameId", selectedGameId);
+
             HttpContext.Session.SetInt32(
                 "PendingAccountId", availableAccount.AccountId);
-            HttpContext.Session.SetInt32("PendingDuration", selectedDuration);
+
+            HttpContext.Session.SetInt32(
+                "PendingDuration", selectedDuration);
 
             return new RentalOrder
             {
@@ -91,7 +114,9 @@ namespace RentalGameDemo.Controllers
                 AccountId = availableAccount.AccountId,
                 StartTime = startTime,
                 EndTime = endTime,
-                Status = "Pending"
+                Status = "Pending",
+                Game = selectedGame,
+                SteamAccount = availableAccount
             };
         }
 
@@ -99,6 +124,16 @@ namespace RentalGameDemo.Controllers
         [HttpPost]
         public IActionResult PrepareRental(int gameId, int duration)
         {
+            int? customerId = HttpContext.Session.GetInt32("CustomerId");
+
+            if (customerId == null)
+            {
+                return RedirectToAction("Login", "Account");
+            }
+
+            HttpContext.Session.SetInt32("SelectedGameId", gameId);
+            HttpContext.Session.SetInt32("SelectedDuration", duration);
+
             selectedGameId = gameId;
             selectedDuration = duration;
 
@@ -106,22 +141,24 @@ namespace RentalGameDemo.Controllers
 
             if (pendingOrder == null)
             {
-                return BadRequest(new
-                {
-                    success = false,
-                    message = "No available account or invalid rental information."
-                });
+                TempData["ErrorMessage"] =
+                    "No available account or invalid rental information.";
+
+                return RedirectToAction("SelectDuration");
             }
 
-            return Ok(new
-            {
-                success = true,
-                gameId = pendingOrder.GameId,
-                accountId = pendingOrder.AccountId,
-                startTime = pendingOrder.StartTime,
-                endTime = pendingOrder.EndTime,
-                duration = selectedDuration
-            });
+            // Demo-only pricing: 10,000 VND per rental hour.
+            decimal amount = duration * 10000m;
+
+            HttpContext.Session.SetString(
+                "PendingAmount",
+                amount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            );
+
+            ViewBag.Amount = amount;
+            ViewBag.Duration = duration;
+
+            return View("RentalSummary", pendingOrder);
         }
 
         // UML Operation
@@ -176,23 +213,31 @@ namespace RentalGameDemo.Controllers
             _context.Payments.Add(payment);
             _context.SaveChanges();
 
-            HttpContext.Session.Remove("PendingGameId");
-            HttpContext.Session.Remove("PendingAccountId");
-            HttpContext.Session.Remove("PendingDuration");
+            ClearPendingRental();
+            HttpContext.Session.Remove("SelectedDuration");
+            HttpContext.Session.Remove("SelectedGameId");
         }
 
         // HTTP Action
         [HttpPost]
-        public IActionResult ConfirmRental(decimal amount)
+        public IActionResult ConfirmRental()
         {
             int? accountId = HttpContext.Session.GetInt32("PendingAccountId");
+            string? amountText = HttpContext.Session.GetString("PendingAmount");
 
-            if (accountId == null)
+            if (accountId == null || amountText == null ||
+                !decimal.TryParse(
+                    amountText,
+                    System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out decimal amount))
+            {
                 return BadRequest(new
                 {
                     success = false,
                     message = "No pending rental was found."
                 });
+            }
 
             bool paymentResult = _paymentGatewayAdapter.requestPayment(amount);
 
@@ -211,9 +256,7 @@ namespace RentalGameDemo.Controllers
                     _context.SaveChanges();
                 }
 
-                HttpContext.Session.Remove("PendingGameId");
-                HttpContext.Session.Remove("PendingAccountId");
-                HttpContext.Session.Remove("PendingDuration");
+                ClearPendingRental();
 
                 return BadRequest(new
                 {
@@ -224,12 +267,51 @@ namespace RentalGameDemo.Controllers
 
             confirmRental();
 
-            return Ok(new
+            // confirmRental clears PendingAccountId only after saving the order.
+            bool rentalCreated =
+                HttpContext.Session.GetInt32("PendingAccountId") == null;
+
+            if (!rentalCreated)
             {
-                success = true,
-                transactionId = _paymentGatewayAdapter.transactionId,
-                message = "Rental confirmed successfully."
-            });
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Payment succeeded, but rental creation failed."
+                });
+            }
+
+            return RedirectToAction("ActiveRentals");
+        }
+
+        private void ClearPendingRental()
+        {
+            HttpContext.Session.Remove("PendingGameId");
+            HttpContext.Session.Remove("PendingAccountId");
+            HttpContext.Session.Remove("PendingDuration");
+            HttpContext.Session.Remove("PendingAmount");
+        }
+
+        [HttpPost]
+        public IActionResult CancelRental()
+        {
+            int? accountId = HttpContext.Session.GetInt32("PendingAccountId");
+
+            if (accountId != null)
+            {
+                SteamAccount? account = _context.SteamAccounts
+                    .FirstOrDefault(a => a.AccountId == accountId.Value);
+
+                if (account != null)
+                {
+                    account.releaseAccount();
+                    account.updateAvailability(true);
+                    _context.SaveChanges();
+                }
+            }
+
+            ClearPendingRental();
+
+            return RedirectToAction("Catalog");
         }
 
         // UML Operation
@@ -402,7 +484,7 @@ namespace RentalGameDemo.Controllers
 
             if (customerId == null)
             {
-                return RedirectToAction("Index", "Home");
+                return RedirectToAction("Login", "Account");
 
             }
 
@@ -422,6 +504,34 @@ namespace RentalGameDemo.Controllers
             rentalUI.showActiveRentals();
 
             return View("ActiveRentals", rentalUI);
+        }
+
+        [HttpGet]
+        public IActionResult SelectDuration()
+        {
+            int? customerId = HttpContext.Session.GetInt32("CustomerId");
+            int? gameId = HttpContext.Session.GetInt32("SelectedGameId");
+
+            if (customerId == null)
+            {
+                return RedirectToAction("Login", "Account");
+            }
+
+            if (gameId == null)
+            {
+                return RedirectToAction("Catalog");
+            }
+
+            Game? game = _context.Games
+                .Include(g => g.SteamAccounts)
+                .FirstOrDefault(g => g.GameId == gameId.Value);
+
+            if (game == null)
+            {
+                return NotFound();
+            }
+
+            return View("SelectDuration", game);
         }
 
     }
