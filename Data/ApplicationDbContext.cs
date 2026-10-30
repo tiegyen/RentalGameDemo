@@ -22,6 +22,27 @@ namespace RentalGameDemo.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            // Configure Primary Keys
+            modelBuilder.Entity<Customer>()
+                .HasKey(c => c.CustomerId);
+
+            modelBuilder.Entity<Game>()
+                .HasKey(g => g.GameId);
+
+            modelBuilder.Entity<SteamAccount>()
+                .HasKey(s => s.AccountId);
+
+            modelBuilder.Entity<RentalOrder>()
+                .HasKey(r => r.OrderId);
+
+            modelBuilder.Entity<Payment>()
+                .HasKey(p => p.PaymentId);
+
+            // Configure Payment amount precision
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.Amount)
+                .HasPrecision(18, 2);
+
             // Customer 1 - 0..* RentalOrder
             modelBuilder.Entity<RentalOrder>()
                 .HasOne(r => r.Customer)
