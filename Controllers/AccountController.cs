@@ -86,56 +86,7 @@ namespace RentalGameDemo.Controllers
             return availableAccount;
         }
 
-        // Temporary test action for development
-        [HttpGet]
-        public IActionResult TestAccountOperations()
-        {
-            // Allow this test action only in Development.
-            var environment = HttpContext.RequestServices
-                .GetRequiredService<IWebHostEnvironment>();
 
-            if (!environment.IsDevelopment())
-            {
-                return NotFound();
-            }
-
-            // Test 1: Authenticate with correct credentials.
-            bool validLogin = authenticateCustomer(
-                "testuser",
-                "Test@12345"
-            );
-
-            // Test 2: Authenticate with incorrect password.
-            bool invalidLogin = authenticateCustomer(
-                "testuser",
-                "WrongPassword"
-            );
-
-            // Find the test game.
-            Game? game = _context.Games
-                .FirstOrDefault(g => g.Title == "Test Game");
-
-            if (game == null)
-            {
-                return NotFound("Test Game was not found.");
-            }
-
-            // Test 3: Check availability for an existing game.
-            SteamAccount? availableAccount =
-                checkAvailability(game.GameId);
-
-            // Test 4: Check availability for a non-existing game.
-            SteamAccount? unavailableAccount =
-                checkAvailability(-1);
-
-            return Json(new
-            {
-                AuthenticationWithCorrectPassword = validLogin,
-                AuthenticationWithWrongPassword = invalidLogin,
-                AvailableAccountFound = availableAccount != null,
-                UnavailableAccountReturnsNull = unavailableAccount == null
-            });
-        }
 
 
     }
