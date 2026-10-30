@@ -4,6 +4,20 @@
     ViewData["Title"] = "Select Rental Duration";
 }
 
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">
+        @TempData["ErrorMessage"]
+    </div>
+}
+
+@if (ViewBag.ErrorMessage != null)
+{
+    <div class="alert alert-warning">
+        @ViewBag.ErrorMessage
+    </div>
+}
+
 <div class="container py-4">
     <div class="card shadow-sm mx-auto" style="max-width: 600px;">
         <div class="card-body p-4">
@@ -36,9 +50,18 @@
                     </select>
                 </div>
 
-                <button type="submit" class="btn btn-primary w-100">
-                    Continue to Checkout
-                </button>
+                @if (Model.SteamAccounts.Any(a => a.IsAvailable))
+                {
+                    <button type="submit" class="btn btn-primary w-100">
+                        Continue to Checkout
+                    </button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-secondary w-100" disabled>
+                        Currently Unavailable
+                    </button>
+                }
             </form>
         </div>
     </div>

@@ -98,6 +98,16 @@ namespace RentalGameDemo.Controllers
             DateTime startTime = DateTime.Now;
             DateTime endTime = startTime.AddHours(selectedDuration);
 
+            HttpContext.Session.SetString(
+            "PendingStartTime",
+            startTime.ToString("O")
+            );
+
+            HttpContext.Session.SetString(
+                "PendingEndTime",
+                endTime.ToString("O")
+            );
+
             HttpContext.Session.SetInt32(
                 "PendingGameId", selectedGameId);
 
@@ -129,6 +139,12 @@ namespace RentalGameDemo.Controllers
             if (customerId == null)
             {
                 return RedirectToAction("Login", "Account");
+            }
+
+            if (duration <= 0 || !_context.Games.Any(g => g.GameId == gameId))
+            {
+                TempData["ErrorMessage"] = "Invalid game or rental duration.";
+                return RedirectToAction("Catalog");
             }
 
             HttpContext.Session.SetInt32("SelectedGameId", gameId);
@@ -180,8 +196,17 @@ namespace RentalGameDemo.Controllers
             if (account == null || account.IsAvailable)
                 return;
 
-            DateTime startTime = DateTime.Now;
-            DateTime endTime = startTime.AddHours(duration.Value);
+            string? startTimeText =
+            HttpContext.Session.GetString("PendingStartTime");
+
+            string? endTimeText =
+                HttpContext.Session.GetString("PendingEndTime");
+
+            if (!DateTime.TryParse(startTimeText, out DateTime startTime) ||
+                !DateTime.TryParse(endTimeText, out DateTime endTime))
+            {
+                return;
+            }
 
             RentalOrder order = new RentalOrder
             {
@@ -206,12 +231,18 @@ namespace RentalGameDemo.Controllers
                 account.releaseAccount();
                 account.updateAvailability(true);
                 _context.SaveChanges();
+
+                ClearPendingRental();
+
                 return;
             }
 
             _context.RentalOrders.Add(order);
             _context.Payments.Add(payment);
             _context.SaveChanges();
+
+            // Mark rental creation as successful.
+            HttpContext.Session.SetString("RentalCreationSucceeded", "true");
 
             ClearPendingRental();
             HttpContext.Session.Remove("SelectedDuration");
@@ -222,21 +253,20 @@ namespace RentalGameDemo.Controllers
         [HttpPost]
         public IActionResult ConfirmRental()
         {
+            HttpContext.Session.Remove("RentalCreationSucceeded");
             int? accountId = HttpContext.Session.GetInt32("PendingAccountId");
             string? amountText = HttpContext.Session.GetString("PendingAmount");
 
             if (accountId == null || amountText == null ||
-                !decimal.TryParse(
+            !decimal.TryParse(
                     amountText,
                     System.Globalization.NumberStyles.Number,
                     System.Globalization.CultureInfo.InvariantCulture,
                     out decimal amount))
             {
-                return BadRequest(new
-                {
-                    success = false,
-                    message = "No pending rental was found."
-                });
+                TempData["ErrorMessage"] = "No pending rental was found.";
+
+                return RedirectToAction("Catalog");
             }
 
             bool paymentResult = _paymentGatewayAdapter.requestPayment(amount);
@@ -258,29 +288,32 @@ namespace RentalGameDemo.Controllers
 
                 ClearPendingRental();
 
-                return BadRequest(new
-                {
-                    success = false,
-                    message = "Payment failed. The account reservation was released."
-                });
+                HttpContext.Session.Remove("RentalCreationSucceeded");
+
+                TempData["ErrorMessage"] =
+                    "Payment failed. The reserved account has been released.";
+
+                return RedirectToAction("SelectDuration");
             }
 
             confirmRental();
 
-            // confirmRental clears PendingAccountId only after saving the order.
             bool rentalCreated =
-                HttpContext.Session.GetInt32("PendingAccountId") == null;
+                HttpContext.Session.GetString("RentalCreationSucceeded") == "true";
+
+            HttpContext.Session.Remove("RentalCreationSucceeded");
 
             if (!rentalCreated)
             {
-                return BadRequest(new
-                {
-                    success = false,
-                    message = "Payment succeeded, but rental creation failed."
-                });
+                TempData["ErrorMessage"] =
+                    "Payment was processed, but rental creation failed. Please contact support.";
+
+                return RedirectToAction("Catalog");
             }
 
-            return RedirectToAction("ActiveRentals");
+            TempData["SuccessMessage"] = "Rental confirmed successfully.";
+
+            return RedirectToAction("Dashboard");
         }
 
         private void ClearPendingRental()
@@ -289,6 +322,8 @@ namespace RentalGameDemo.Controllers
             HttpContext.Session.Remove("PendingAccountId");
             HttpContext.Session.Remove("PendingDuration");
             HttpContext.Session.Remove("PendingAmount");
+            HttpContext.Session.Remove("PendingStartTime");
+            HttpContext.Session.Remove("PendingEndTime");
         }
 
         [HttpPost]
@@ -310,6 +345,9 @@ namespace RentalGameDemo.Controllers
             }
 
             ClearPendingRental();
+
+            HttpContext.Session.Remove("SelectedGameId");
+            HttpContext.Session.Remove("SelectedDuration");
 
             return RedirectToAction("Catalog");
         }
@@ -344,18 +382,23 @@ namespace RentalGameDemo.Controllers
         }
 
         // UML Operation
+        // UML Operation
         [NonAction]
         public bool processExtension(int orderId, int extensionDuration)
         {
             if (extensionDuration <= 0 ||
                 !validateExtensionEligibility(orderId))
+            {
                 return false;
+            }
 
             RentalOrder? order = _context.RentalOrders
                 .FirstOrDefault(o => o.OrderId == orderId);
 
             if (order == null)
+            {
                 return false;
+            }
 
             DateTime newEndTime =
                 order.EndTime.AddHours(extensionDuration);
@@ -364,7 +407,9 @@ namespace RentalGameDemo.Controllers
                 .FirstOrDefault(a => a.AccountId == order.AccountId);
 
             if (currentAccount == null)
+            {
                 return false;
+            }
 
             bool conflictingRental = _context.RentalOrders.Any(o =>
                 o.OrderId != orderId &&
@@ -373,13 +418,16 @@ namespace RentalGameDemo.Controllers
                 o.StartTime < newEndTime &&
                 o.EndTime > order.EndTime);
 
+            // Extend the rental when the current account has no conflict.
             if (!conflictingRental)
             {
                 order.updateEndTime(newEndTime);
                 _context.SaveChanges();
+
                 return true;
             }
 
+            // Find another available account for the same game.
             SteamAccount? alternativeAccount = _context.SteamAccounts
                 .FirstOrDefault(a =>
                     a.GameId == order.GameId &&
@@ -387,16 +435,31 @@ namespace RentalGameDemo.Controllers
                     a.AccountId != currentAccount.AccountId);
 
             if (alternativeAccount == null)
+            {
                 return false;
+            }
 
             if (!alternativeAccount.reserveAccount())
+            {
                 return false;
+            }
 
+            // Reassign the rental to the alternative account.
             order.reassignAccount(alternativeAccount);
             order.updateEndTime(newEndTime);
 
-            currentAccount.releaseAccount();
-            currentAccount.updateAvailability(true);
+            // Release the old account only when no other active rental uses it.
+            bool hasOtherActiveRental = _context.RentalOrders.Any(o =>
+                o.OrderId != orderId &&
+                o.AccountId == currentAccount.AccountId &&
+                o.Status == "Active" &&
+                o.EndTime > DateTime.Now);
+
+            if (!hasOtherActiveRental)
+            {
+                currentAccount.releaseAccount();
+                currentAccount.updateAvailability(true);
+            }
 
             _context.SaveChanges();
 
@@ -405,25 +468,22 @@ namespace RentalGameDemo.Controllers
 
         // HTTP Action
         [HttpPost]
-        public IActionResult RequestExtension(
-            int orderId, int extensionDuration)
+        public IActionResult RequestExtension(int orderId, int extensionDuration)
         {
             bool result = processExtension(orderId, extensionDuration);
 
             if (!result)
             {
-                return BadRequest(new
-                {
-                    success = false,
-                    message = "Extension request was rejected."
-                });
+                TempData["ErrorMessage"] =
+                    "Extension request was rejected.";
+
+                return RedirectToAction("Dashboard");
             }
 
-            return Ok(new
-            {
-                success = true,
-                message = "Rental extension confirmed."
-            });
+            TempData["SuccessMessage"] =
+                "Rental extension confirmed.";
+
+            return RedirectToAction("Dashboard");
         }
 
         // UML Operation
@@ -477,34 +537,7 @@ namespace RentalGameDemo.Controllers
             });
         }
 
-        [HttpGet]
-        public IActionResult ActiveRentals()
-        {
-            int? customerId = HttpContext.Session.GetInt32("CustomerId");
-
-            if (customerId == null)
-            {
-                return RedirectToAction("Login", "Account");
-
-            }
-
-            processExpiration();
-
-            RentalUI rentalUI = new RentalUI();
-
-            rentalUI.activeRentalOrders = _context.RentalOrders
-                .Include(o => o.Game)
-                .Include(o => o.SteamAccount)
-                .Where(o =>
-                    o.CustomerId == customerId.Value &&
-                    o.Status == "Active")
-                .OrderBy(o => o.EndTime)
-                .ToList();
-
-            rentalUI.showActiveRentals();
-
-            return View("ActiveRentals", rentalUI);
-        }
+        
 
         [HttpGet]
         public IActionResult SelectDuration()
@@ -531,8 +564,65 @@ namespace RentalGameDemo.Controllers
                 return NotFound();
             }
 
+            if (!game.SteamAccounts.Any(a => a.IsAvailable))
+            {
+                ViewBag.ErrorMessage = "No Steam account is currently available for this game.";
+            }
+
             return View("SelectDuration", game);
         }
+
+        //DashboardCustomer
+
+
+        [HttpGet]
+        public IActionResult Dashboard()
+        {
+            int? customerId = HttpContext.Session.GetInt32("CustomerId");
+
+            if (customerId == null)
+            {
+                return RedirectToAction("Login", "Account");
+            }
+
+            processExpiration();
+
+            CustomerDashboardViewModel dashboard =
+                new CustomerDashboardViewModel();
+
+            dashboard.ActiveRentalCount = _context.RentalOrders.Count(o =>
+                o.CustomerId == customerId.Value &&
+                o.Status == "Active");
+
+            dashboard.TotalRentalCount = _context.RentalOrders.Count(o =>
+                o.CustomerId == customerId.Value);
+
+            dashboard.ActiveRentals = _context.RentalOrders
+                .Include(o => o.Game)
+                .Include(o => o.SteamAccount)
+                .Where(o =>
+                    o.CustomerId == customerId.Value &&
+                    o.Status == "Active")
+                .OrderBy(o => o.EndTime)
+                .ToList();
+
+            dashboard.PaymentHistory = _context.Payments
+                .Include(p => p.RentalOrder)
+                    .ThenInclude(o => o.Game)
+                .Where(p => p.RentalOrder.CustomerId == customerId.Value)
+                .OrderByDescending(p => p.TransactionDate)
+                .ToList();
+
+            dashboard.TotalPaymentRecords = dashboard.PaymentHistory.Count;
+
+            dashboard.TotalPaymentAmount = dashboard.PaymentHistory
+                .Where(p => p.PaymentStatus == "Paid")
+                .Sum(p => p.Amount);
+
+            return View("Dashboard", dashboard);
+        }
+
+
 
     }
 }

@@ -95,7 +95,7 @@ namespace RentalGameDemo.Controllers
                 return RedirectToAction("SelectDuration", "Rental");
             }
 
-            return RedirectToAction("ActiveRentals", "Rental");
+            return RedirectToAction("Dashboard", "Rental");
         }
 
         [HttpGet]

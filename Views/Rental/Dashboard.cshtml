@@ -1,5 +1,316 @@
-﻿@*
-    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
-*@
+﻿@model RentalGameDemo.ViewModels.CustomerDashboardViewModel
+
 @{
+    ViewData["Title"] = "My Dashboard";
 }
+
+<div class="container py-4">
+
+    <h2 class="mb-4">My Dashboard</h2>
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success">
+            @TempData["SuccessMessage"]
+        </div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger">
+            @TempData["ErrorMessage"]
+        </div>
+    }
+
+    <!-- Customer Overview -->
+    <div class="row g-3 mb-4">
+
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3 h-100">
+                <h6>My Active Rentals</h6>
+                <h3>@Model.ActiveRentalCount</h3>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3 h-100">
+                <h6>My Total Rentals</h6>
+                <h3>@Model.TotalRentalCount</h3>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3 h-100">
+                <h6>My Total Payments</h6>
+                <h3>@Model.TotalPaymentAmount.ToString("N0") VND</h3>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3 h-100">
+                <h6>Payment Records</h6>
+                <h3>@Model.TotalPaymentRecords</h3>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Active Rentals -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+
+        <h3>My Active Rentals</h3>
+
+        <a asp-controller="Rental"
+           asp-action="Catalog"
+           class="btn btn-primary">
+            Browse Games
+        </a>
+
+    </div>
+
+    @if (Model.ActiveRentals.Count == 0)
+    {
+        <div class="alert alert-info">
+            You do not have any active rentals.
+        </div>
+    }
+    else
+    {
+        foreach (var order in Model.ActiveRentals)
+        {
+            <div class="card shadow-sm mb-3">
+
+                <div class="card-body">
+
+                    <h5 class="text-primary">
+                        @order.Game.Title
+                    </h5>
+
+                    <p>
+                        <strong>Order ID:</strong>
+                        @order.OrderId
+                    </p>
+
+                    <p>
+                        <strong>Start Time:</strong>
+                        @order.StartTime.ToString("dd/MM/yyyy HH:mm")
+                    </p>
+
+                    <p>
+                        <strong>End Time:</strong>
+                        @order.EndTime.ToString("dd/MM/yyyy HH:mm")
+                    </p>
+
+                    <p>
+                        <strong>Status:</strong>
+                        <span class="badge bg-success">
+                            @order.Status
+                        </span>
+                    </p>
+
+                    <hr />
+
+                    <h6>Steam Account Information</h6>
+
+                    <p>
+                        <strong>Account Name:</strong>
+                        @order.SteamAccount.AccountName
+                    </p>
+
+                    <p>
+                        <strong>Password:</strong>
+
+                        <span id="password-@order.OrderId">
+                            ********
+                        </span>
+
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary ms-2"
+                                onclick="togglePassword(
+                                            @order.OrderId,
+                                            this)">
+                            Show Password
+                        </button>
+
+                        <input type="hidden"
+                               id="real-password-@order.OrderId"
+                               value="@order.SteamAccount.AccountPassword" />
+                    </p>
+
+                    <p>
+                        <strong>Verification Code:</strong>
+                        @order.SteamAccount.VerificationCode
+                    </p>
+
+                    <hr />
+
+                    <p>
+                        <strong>Remaining Time:</strong>
+
+                        <span id="countdown-@order.OrderId"
+                              data-end="@order.EndTime.ToString("O")"
+                              class="fw-bold text-primary">
+                            Calculating...
+                        </span>
+                    </p>
+
+                    <form asp-controller="Rental"
+                          asp-action="RequestExtension"
+                          method="post"
+                          class="mt-3">
+
+                        <input type="hidden"
+                               name="orderId"
+                               value="@order.OrderId" />
+
+                        <div class="row g-2">
+
+                            <div class="col-md-4">
+                                <input type="number"
+                                       name="extensionDuration"
+                                       class="form-control"
+                                       placeholder="Extension hours"
+                                       min="1"
+                                       required />
+                            </div>
+
+                            <div class="col-md-4">
+                                <button type="submit"
+                                        class="btn btn-primary w-100">
+                                    Extend Rental
+                                </button>
+                            </div>
+
+                        </div>
+
+                    </form>
+
+                </div>
+            </div>
+        }
+    }
+
+    <hr class="my-4" />
+
+    <!-- Payment History -->
+    <h3 class="mb-3">My Payment History</h3>
+
+    @if (Model.PaymentHistory.Count == 0)
+    {
+        <div class="alert alert-info">
+            You do not have any payment records.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+
+            <table class="table table-bordered table-striped">
+
+                <thead class="table-light">
+                    <tr>
+                        <th>Payment ID</th>
+                        <th>Order ID</th>
+                        <th>Game</th>
+                        <th>Amount</th>
+                        <th>Payment Status</th>
+                        <th>Transaction Date</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    @foreach (var payment in Model.PaymentHistory)
+                    {
+                        <tr>
+                            <td>@payment.PaymentId</td>
+
+                            <td>@payment.OrderId</td>
+
+                            <td>
+                                @payment.RentalOrder.Game.Title
+                            </td>
+
+                            <td>
+                                @payment.Amount.ToString("N0") VND
+                            </td>
+
+                            <td>
+                                @payment.PaymentStatus
+                            </td>
+
+                            <td>
+                                @payment.TransactionDate.ToString(
+                                "dd/MM/yyyy HH:mm")
+                    </td>
+                </tr>
+                                }
+
+                </tbody>
+
+            </table>
+
+        </div>
+    }
+
+</div>
+
+<script>
+    function togglePassword(orderId, button) {
+
+        const passwordElement =
+            document.getElementById("password-" + orderId);
+
+        const realPassword =
+            document.getElementById("real-password-" + orderId).value;
+
+        if (passwordElement.textContent === "********") {
+
+            passwordElement.textContent = realPassword;
+            button.textContent = "Hide Password";
+
+        } else {
+
+            passwordElement.textContent = "********";
+            button.textContent = "Show Password";
+
+        }
+    }
+
+    function updateCountdowns() {
+
+        document.querySelectorAll("[id^='countdown-']")
+            .forEach(element => {
+
+                const endTime = new Date(element.dataset.end);
+                const remaining = endTime - new Date();
+
+                if (remaining <= 0) {
+                    element.textContent = "Expired";
+                    return;
+                }
+
+                const totalSeconds =
+                    Math.floor(remaining / 1000);
+
+                const hours =
+                    Math.floor(totalSeconds / 3600);
+
+                const minutes =
+                    Math.floor((totalSeconds % 3600) / 60);
+
+                const seconds =
+                    totalSeconds % 60;
+
+                element.textContent =
+                    String(hours).padStart(2, "0") + ":" +
+                    String(minutes).padStart(2, "0") + ":" +
+                    String(seconds).padStart(2, "0");
+
+            });
+    }
+
+    updateCountdowns();
+
+    setInterval(updateCountdowns, 1000);
+</script>

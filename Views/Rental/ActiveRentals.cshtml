@@ -4,6 +4,20 @@
     ViewData["Title"] = "Active Rentals";
 }
 
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">
+        @TempData["SuccessMessage"]
+    </div>
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">
+        @TempData["ErrorMessage"]
+    </div>
+}
+
 <h2>My Active Rentals</h2>
 
 @if (Model.activeRentalOrders.Count == 0)
